@@ -168,7 +168,7 @@ check-meta:
 
 .PHONY: add-new-release-to-meta
 add-new-release-to-meta:
-	MAKEFILES/add-new-release-to-meta.sh
+	MAKEFILES/add-new-release-to-meta.sh "$(shell sed 's/^v//' VERSION_TAG_JELLYFIN.txt)"
 	git diff "$(APPMETA)"
 
 npm-generated-sources.json:
