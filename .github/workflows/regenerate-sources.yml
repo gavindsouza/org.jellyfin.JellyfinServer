@@ -147,6 +147,7 @@ jobs:
 
     - name: Add release entry to metainfo for ${{ env.SOFTWARE_NAME }} ${{ env.JF_TAG }}
       if: env.NEW_RELEASE_DETECTED == 'true'
+      working-directory: main
       run: |
         sed 's/^v//' <<< "${JF_TAG}" | xargs -I{} MAKEFILES/add-new-release-to-meta.sh {}
       env:
