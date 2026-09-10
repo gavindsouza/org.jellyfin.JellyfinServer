@@ -690,7 +690,6 @@ modules:
       - --disable-doc
       - --disable-ffplay
       - --disable-libxcb
-      - --disable-ptx-compression
       - --disable-sdl2
       - --disable-static
       - --disable-xlib
