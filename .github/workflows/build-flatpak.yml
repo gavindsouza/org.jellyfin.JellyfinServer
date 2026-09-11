@@ -1,0 +1,121 @@
+name: Build Flatpak
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MANIFEST: org.jellyfin.JellyfinServer.yml
+      BUILDDIR: build-dir_x86_64
+      ARCHITECTURE: x86_64
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Install flatpak and tooling
+        run: |
+          sudo add-apt-repository -y ppa:flatpak/stable
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak flatpak-builder elfutils librsvg2-common ccache
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Restore installed SDK from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-sdk-${{ runner.os }}-25.08-${{ hashFiles('**/org.jellyfin.JellyfinServer.yml') }}
+          restore-keys: |
+            flatpak-sdk-${{ runner.os }}-25.08-
+
+      - name: Install runtime, SDK and extensions
+        run: |
+          flatpak install --user --noninteractive flathub \
+            org.freedesktop.Platform//25.08 \
+            org.freedesktop.Sdk//25.08 \
+            org.freedesktop.Sdk.Extension.dotnet10//25.08 \
+            org.freedesktop.Sdk.Extension.node24//25.08 \
+            org.freedesktop.Sdk.Extension.llvm21//25.08 \
+            org.flatpak.Builder
+
+      - name: Restore build state from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .flatpak-builder
+            ${{ env.BUILDDIR }}
+            repo
+          key: flatpak-build-v2-${{ runner.arch }}-${{ hashFiles('**/org.jellyfin.JellyfinServer.yml', '**/npm-generated-sources.json', '**/nuget-generated-sources*.json') }}
+
+      - name: Use modern AppStream tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/appstreamcli" <<'EOF'
+          #!/bin/bash
+          # The apt appstreamcli (1.0.2) cannot compose this metadata; use the
+          # bundled one from the org.flatpak.Builder runtime instead.
+          exec flatpak run --command=appstreamcli org.flatpak.Builder "$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/bin/appstreamcli"
+
+      - name: Build Flatpak
+        run: |
+          PATH="$RUNNER_TEMP/bin:$PATH" flatpak-builder \
+            --user \
+            --ccache \
+            --disable-rofiles-fuse \
+            --force-clean \
+            --arch=${{ env.ARCHITECTURE }} \
+            --repo=repo \
+            "${{ env.BUILDDIR }}" \
+            "${{ env.MANIFEST }}"
+
+      - name: Lint manifest
+        continue-on-error: true
+        run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest "${{ env.MANIFEST }}"
+
+      - name: Lint repository
+        continue-on-error: true
+        run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+
+      - name: Validate AppStream metadata
+        run: flatpak run --command=appstreamcli org.flatpak.Builder validate org.jellyfin.JellyfinServer.metainfo.xml
+
+      - name: Create bundle
+        run: flatpak build-bundle repo --arch ${{ env.ARCHITECTURE }} JellyfinServer-${{ env.ARCHITECTURE }}.flatpak org.jellyfin.JellyfinServer
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: JellyfinServer-${{ env.ARCHITECTURE }}
+          path: JellyfinServer-${{ env.ARCHITECTURE }}.flatpak
+        if: always()
+
+      - name: Save build state to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .flatpak-builder
+            ${{ env.BUILDDIR }}
+            repo
+          key: flatpak-build-v2-${{ runner.arch }}-${{ hashFiles('**/org.jellyfin.JellyfinServer.yml', '**/npm-generated-sources.json', '**/nuget-generated-sources*.json') }}
+
+      - name: Save installed SDK to cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-sdk-${{ runner.os }}-25.08-${{ hashFiles('**/org.jellyfin.JellyfinServer.yml') }}
