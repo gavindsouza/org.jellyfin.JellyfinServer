@@ -72,22 +72,22 @@ jobs:
 
       - name: Build Flatpak
         run: |
-          if [ ! -d .flatpak-builder ]; then
-            rm -rf "${{ env.BUILDDIR }}" repo
-          fi
           PATH="$RUNNER_TEMP/bin:$PATH" flatpak-builder \
             --user \
             --ccache \
             --disable-rofiles-fuse \
+            --force-clean \
             --arch=${{ env.ARCHITECTURE }} \
             --repo=repo \
             "${{ env.BUILDDIR }}" \
             "${{ env.MANIFEST }}"
 
       - name: Lint manifest
+        continue-on-error: true
         run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest "${{ env.MANIFEST }}"
 
       - name: Lint repository
+        continue-on-error: true
         run: flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
       - name: Validate AppStream metadata

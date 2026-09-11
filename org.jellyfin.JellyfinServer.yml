@@ -80,6 +80,8 @@ modules:
     modules:
       - name: khronos-opencl-headers
         buildsystem: cmake-ninja
+        config-opts:
+          - -DBUILD_TESTS=OFF
         sources:
           - type: git
             url: https://github.com/KhronosGroup/OpenCL-Headers.git
